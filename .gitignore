@@ -1,0 +1,24 @@
+.build/
+.DS_Store
+dist/
+outputs/
+
+# Local question data and generated documents
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.docx
+.wrong-question-state.json
+.capture-state.windows.json
+
+# Platform build outputs
+Windows/release/
+**/bin/
+**/obj/
+.vs/
+*.app
+*.dmg
+*.pkg
+*.exe
+*.msi
+*.zip

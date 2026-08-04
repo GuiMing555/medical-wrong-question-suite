@@ -1,0 +1,86 @@
+<Window x:Class="WrongQuestionCapture.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="医学综合错题截图" Height="690" Width="780"
+        MinHeight="620" MinWidth="700" WindowStartupLocation="CenterScreen"
+        Background="#F5F7F6">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid Margin="28">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <StackPanel Grid.Row="0" Margin="0,0,0,20">
+        <TextBlock Text="医学综合错题截图" FontSize="27" FontWeight="SemiBold" Foreground="#173F34" />
+        <TextBlock Margin="0,7,0,0" Foreground="#52635E" TextWrapping="Wrap"
+                   Text="截图、文字识别和题库同步全部在本机完成。完整题目会立即加入共享错题本，缺项题只进入待校对文件夹。" />
+      </StackPanel>
+
+      <Border Grid.Row="1" Background="White" CornerRadius="10" Padding="18" Margin="0,0,0,14">
+        <StackPanel>
+          <TextBlock Text="目标窗口" FontSize="17" FontWeight="SemiBold" />
+          <TextBlock x:Name="TargetStatusText" Margin="0,8,0,8" Text="尚未选定窗口" Foreground="#52635E" TextWrapping="Wrap" />
+          <WrapPanel>
+            <Button x:Name="SelectTargetButton" Click="SelectTargetButton_Click" Content="3 秒后记录前台窗口" />
+            <Button Click="CaptureNowButton_Click" Content="立即截图" Background="#176B52" Foreground="White" />
+          </WrapPanel>
+          <TextBlock Margin="0,6,0,0" Foreground="#6A7975" FontSize="12" TextWrapping="Wrap"
+                     Text="也可在题库窗口位于前台时按 Ctrl + Alt + Shift + 1 选定；之后用下方截图快捷键保存。" />
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Row="2" Background="White" CornerRadius="10" Padding="18" Margin="0,0,0,14">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="150" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <TextBlock Grid.Row="0" Grid.ColumnSpan="3" Text="设置" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,12" />
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="截图快捷键" VerticalAlignment="Center" />
+          <ComboBox x:Name="ShortcutComboBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4" />
+
+          <TextBlock Grid.Row="2" Grid.Column="0" Text="截图保存位置" VerticalAlignment="Center" />
+          <TextBox x:Name="CaptureFolderTextBox" Grid.Row="2" Grid.Column="1" Margin="0,4" />
+          <Button Grid.Row="2" Grid.Column="2" Click="BrowseCaptureFolder_Click" Content="浏览…" Margin="8,4,0,4" />
+
+          <TextBlock Grid.Row="3" Grid.Column="0" Text="文档保存位置" VerticalAlignment="Center" />
+          <TextBox x:Name="OutputFolderTextBox" Grid.Row="3" Grid.Column="1" Margin="0,4" />
+          <Button Grid.Row="3" Grid.Column="2" Click="BrowseOutputFolder_Click" Content="浏览…" Margin="8,4,0,4" />
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="3" Background="White" CornerRadius="10" Padding="18" Margin="0,0,0,14">
+        <StackPanel>
+          <CheckBox x:Name="DailyOrganizeCheckBox" Content="每日 15:00 自动整理错题本" FontWeight="SemiBold" />
+          <TextBlock Margin="24,6,0,10" Foreground="#6A7975" FontSize="12" TextWrapping="Wrap"
+                     Text="使用 Windows 任务计划程序。设置后不需要保持本窗口打开。" />
+          <WrapPanel>
+            <Button Click="SaveSettingsButton_Click" Content="保存设置" Background="#176B52" Foreground="White" />
+            <Button Click="OrganizeNowButton_Click" Content="立即整理" />
+            <Button Click="OpenCaptureFolderButton_Click" Content="打开截图文件夹" />
+            <Button Click="OpenOutputFolderButton_Click" Content="打开文档文件夹" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Row="4" Background="#E7F0EC" CornerRadius="8" Padding="14">
+        <StackPanel>
+          <TextBlock Text="运行状态" FontWeight="SemiBold" />
+          <TextBlock x:Name="RunStatusText" Margin="0,6,0,0" Text="就绪" TextWrapping="Wrap" Foreground="#284A40" />
+        </StackPanel>
+      </Border>
+    </Grid>
+  </ScrollViewer>
+</Window>

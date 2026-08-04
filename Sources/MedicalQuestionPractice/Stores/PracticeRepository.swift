@@ -1,0 +1,18 @@
+import Foundation
+
+/// UI-facing boundary around the shared question-bank database.
+/// Implementations must persist each submission before returning feedback.
+protocol PracticeRepository: Sendable {
+    func dashboard() async throws -> DashboardSummary
+    func loadSettings() async throws -> PracticeSettings
+    func saveSettings(_ settings: PracticeSettings) async throws
+    func startSession(mode: PracticeMode) async throws -> PracticeSessionState
+    func resumeSession(id: String) async throws -> PracticeSessionState
+    func submit(
+        sessionID: String,
+        itemID: String,
+        selectedOptionIDs: Set<String>,
+        submissionToken: String,
+        markAsUnsure: Bool
+    ) async throws -> AnswerFeedback
+}

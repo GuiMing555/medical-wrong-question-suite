@@ -1,0 +1,61 @@
+<Window x:Class="MedicalQuestionPractice.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:MedicalQuestionPractice.Windows.Views"
+        xmlns:vm="clr-namespace:MedicalQuestionPractice.Windows.ViewModels"
+        Title="医学综合练习" Width="1100" Height="760" MinWidth="860" MinHeight="620"
+        WindowStartupLocation="CenterScreen" Activated="Window_Activated">
+    <Window.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding GoHomeCommand}" />
+        <KeyBinding Key="N" Modifiers="Control" Command="{Binding StartNormalCommand}" />
+        <KeyBinding Key="W" Modifiers="Control" Command="{Binding StartWrongBookCommand}" />
+        <KeyBinding Key="OemComma" Modifiers="Control" Command="{Binding OpenSettingsCommand}" />
+    </Window.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="26,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="医学综合练习" FontSize="22" FontWeight="Bold" />
+                    <TextBlock Text="本地题库" Foreground="{StaticResource MutedTextBrush}" FontSize="13" VerticalAlignment="Bottom" Margin="12,0,0,2" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="主页  Esc" Command="{Binding GoHomeCommand}" Style="{StaticResource SecondaryButton}" Padding="13,7" Margin="0,0,10,0" />
+                    <Button Content="设置  Ctrl+," Command="{Binding OpenSettingsCommand}" Style="{StaticResource SecondaryButton}" Padding="13,7" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ContentControl Grid.Row="1" Content="{Binding CurrentPage}" Margin="26,22,26,26">
+            <ContentControl.Resources>
+                <DataTemplate DataType="{x:Type vm:HomeViewModel}">
+                    <views:HomeView />
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:PracticeViewModel}">
+                    <views:PracticeView />
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+                    <views:SettingsView />
+                </DataTemplate>
+            </ContentControl.Resources>
+        </ContentControl>
+
+        <Border Grid.RowSpan="2" Background="#66000000" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Border Background="White" Padding="26" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <ProgressBar Width="90" Height="6" IsIndeterminate="True" />
+                    <TextBlock Text="正在读取本地题库…" Margin="18,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

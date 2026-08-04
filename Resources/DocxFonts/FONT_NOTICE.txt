@@ -1,0 +1,5 @@
+The embedded document font is Noto Sans CJK SC.
+Noto fonts are distributed under the SIL Open Font License 1.1.
+Project information: https://fonts.google.com/noto
+
+The font is bundled only to keep generated Chinese DOCX files printable across Word and LibreOffice installations.
