@@ -26,31 +26,25 @@ struct PracticeSettings: Equatable, Sendable {
     var questionsPerSession: Int? = nil
 }
 
+enum PracticeInteractionPreferences {
+    static let swipeThresholdKey = "practicePageSwipeThreshold"
+    static let defaultSwipeThreshold = 110.0
+}
+
 struct DashboardSummary: Equatable, Sendable {
     var totalQuestions: Int
     var unseenQuestions: Int
     var dueQuestions: Int
     var wrongBookQuestions: Int
     var answeredToday: Int
-    var activeSession: ActiveSessionSummary?
 
     static let empty = DashboardSummary(
         totalQuestions: 0,
         unseenQuestions: 0,
         dueQuestions: 0,
         wrongBookQuestions: 0,
-        answeredToday: 0,
-        activeSession: nil
+        answeredToday: 0
     )
-}
-
-struct ActiveSessionSummary: Identifiable, Equatable, Sendable {
-    var id: String
-    var mode: PracticeMode
-    var answeredCount: Int
-    var totalCount: Int
-
-    var progressText: String { "\(answeredCount) / \(totalCount)" }
 }
 
 struct PracticeOption: Identifiable, Equatable, Sendable {
@@ -93,10 +87,17 @@ struct AnswerFeedback: Equatable, Sendable {
     var selectedOptionIDs: Set<String>
     var correctOptionIDs: Set<String>
     var explanation: String?
+    var markedAsUnsure: Bool
     var isInWrongBook: Bool
     var wrongBookProgress: WrongBookProgress?
     var removedFromWrongBook: Bool
     var session: PracticeSessionState
+}
+
+struct AnsweredQuestionReview: Equatable, Sendable {
+    var position: Int
+    var question: PracticeQuestion
+    var feedback: AnswerFeedback
 }
 
 enum PracticeRepositoryError: LocalizedError {

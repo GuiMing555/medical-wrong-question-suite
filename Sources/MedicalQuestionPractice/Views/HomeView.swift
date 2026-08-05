@@ -22,13 +22,6 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
-
-                if let active = store.dashboard.activeSession {
-                    ContinuePracticeCard(summary: active) {
-                        Task { await store.resumeActiveSession() }
-                    }
-                }
-
                 modeSection
                 statisticsSection
             }
@@ -66,7 +59,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("医学题库练习")
                 .font(.largeTitle.weight(.semibold))
-            Text("每道题提交后立即保存，可以随时退出并继续。")
+            Text("每道题提交后立即保存，退出当前练习时自动交卷。")
                 .foregroundStyle(.secondary)
         }
     }
@@ -81,8 +74,7 @@ struct HomeView: View {
                     mode: .normal,
                     detail: "练习未做过的题，以及已经到复习时间的题。",
                     countText: "\(store.dashboard.unseenQuestions + store.dashboard.dueQuestions) 道可练习",
-                    isEnabled: store.dashboard.activeSession == nil
-                        && store.dashboard.unseenQuestions + store.dashboard.dueQuestions > 0
+                    isEnabled: store.dashboard.unseenQuestions + store.dashboard.dueQuestions > 0
                 ) {
                     Task { await store.start(.normal) }
                 }
@@ -142,7 +134,7 @@ private struct PracticeModeCard: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .disabled(!isEnabled)
-                .accessibilityHint(isEnabled ? "" : "请先继续未完成练习，或等待题目到期")
+                .accessibilityHint(isEnabled ? "" : "当前没有可练习的题目")
         }
         .padding(20)
         .frame(maxWidth: .infinity, minHeight: 230, alignment: .topLeading)
@@ -151,31 +143,6 @@ private struct PracticeModeCard: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 1)
         }
-    }
-}
-
-private struct ContinuePracticeCard: View {
-    let summary: ActiveSessionSummary
-    let action: () -> Void
-
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "play.circle.fill")
-                .font(.system(size: 34))
-                .foregroundStyle(Color.accentColor)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("继续未完成的\(summary.mode.title)")
-                    .font(.headline)
-                Text("已完成 \(summary.progressText)，上次进度已保存。")
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("继续练习", action: action)
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.return, modifiers: [.command])
-        }
-        .padding(18)
-        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 

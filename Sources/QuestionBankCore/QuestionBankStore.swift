@@ -88,10 +88,7 @@ public final class QuestionBankStore: @unchecked Sendable {
     }
 
     @discardableResult
-    public func importCapturedQuestion(
-        _ captured: CapturedQuestionDraft,
-        markWrong: Bool = true
-    ) throws -> QuestionImportResult {
+    public func importCapturedQuestion(_ captured: CapturedQuestionDraft) throws -> QuestionImportResult {
         let normalizedCorrect = Set(captured.correctLabels.map(normalizeLabel))
         let options = captured.options.map { option in
             OptionDraft(
@@ -144,17 +141,12 @@ public final class QuestionBankStore: @unchecked Sendable {
                         .text(captured.sourceImagePath), .real(captured.capturedAt.timeIntervalSince1970), .real(now)
                     ]
                 )
-                var added = false
-                if markWrong {
-                    let state = try stateRow(questionID: imported.questionID)
-                    added = state?["is_wrong_book"]?.int != 1
-                    try ensureWrongBook(questionID: imported.questionID, at: captured.capturedAt, resetProgress: true)
-                    try appendChange(entityType: "wrong_book", entityID: imported.questionID, action: "capture_added")
-                }
                 if imported.status == .unchanged {
-                    imported = QuestionImportResult(questionID: imported.questionID, status: .updated, addedToWrongBook: added)
-                } else {
-                    imported = QuestionImportResult(questionID: imported.questionID, status: imported.status, addedToWrongBook: added)
+                    imported = QuestionImportResult(
+                        questionID: imported.questionID,
+                        status: .updated,
+                        addedToWrongBook: false
+                    )
                 }
                 return imported
             }
@@ -361,6 +353,64 @@ public final class QuestionBankStore: @unchecked Sendable {
         try queue.sync { try sessionSnapshot(id: id) }
     }
 
+    public func finishSession(id: String, at date: Date = Date()) throws {
+        let changed = try queue.sync {
+            try db.transaction {
+                guard let row = try db.rows(
+                    "SELECT status, current_index, total_items FROM practice_sessions WHERE id = ?",
+                    [.text(id)]
+                ).first else { throw QuestionBankError.sessionNotFound }
+                guard row["status"]?.string == "active" else { return false }
+
+                let timestamp = date.timeIntervalSince1970
+                try db.execute(
+                    "UPDATE practice_sessions SET status = 'completed', updated_at = ?, completed_at = ? WHERE id = ?",
+                    [.real(timestamp), .real(timestamp), .text(id)]
+                )
+                let answered = row["current_index"]?.int ?? 0
+                let total = row["total_items"]?.int ?? 0
+                try appendChange(
+                    entityType: "practice_session",
+                    entityID: id,
+                    action: "finished",
+                    payload: "{\"answered\":\(answered),\"total\":\(total),\"reason\":\"left_practice\"}"
+                )
+                return true
+            }
+        }
+        if changed { notifyChange() }
+    }
+
+    public func finishActiveSessions(at date: Date = Date()) throws {
+        let changed = try queue.sync {
+            try db.transaction {
+                let rows = try db.rows(
+                    "SELECT id, current_index, total_items FROM practice_sessions WHERE status = 'active'"
+                )
+                guard !rows.isEmpty else { return false }
+
+                let timestamp = date.timeIntervalSince1970
+                for row in rows {
+                    guard let id = row["id"]?.string else { continue }
+                    try db.execute(
+                        "UPDATE practice_sessions SET status = 'completed', updated_at = ?, completed_at = ? WHERE id = ?",
+                        [.real(timestamp), .real(timestamp), .text(id)]
+                    )
+                    let answered = row["current_index"]?.int ?? 0
+                    let total = row["total_items"]?.int ?? 0
+                    try appendChange(
+                        entityType: "practice_session",
+                        entityID: id,
+                        action: "finished",
+                        payload: "{\"answered\":\(answered),\"total\":\(total),\"reason\":\"new_session\"}"
+                    )
+                }
+                return true
+            }
+        }
+        if changed { notifyChange() }
+    }
+
     public func submit(_ request: SubmitAnswerRequest) throws -> SubmissionResult {
         let outcome: (result: SubmissionResult, changed: Bool) = try queue.sync {
             try db.transaction {
@@ -400,7 +450,9 @@ public final class QuestionBankStore: @unchecked Sendable {
 
                 let payload = try decode(SessionPayload.self, from: itemRow["question_snapshot_json"]?.string ?? "")
                 let allowedIDs = Set(payload.options.map(\.id))
-                guard !request.selectedOptionIDs.isEmpty, request.selectedOptionIDs.isSubset(of: allowedIDs) else {
+                let hasValidSelection = request.selectedOptionIDs.isSubset(of: allowedIDs)
+                    && (!request.selectedOptionIDs.isEmpty || request.markAsUnsure)
+                guard hasValidSelection else {
                     throw QuestionBankError.invalidSelection
                 }
                 let correctIDs = Set(try decodeStringArray(itemRow["correct_option_ids_json"]?.string))

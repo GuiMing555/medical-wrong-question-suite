@@ -3,6 +3,8 @@ set -euo pipefail
 
 MODE="${1:-run}"
 MIN_SYSTEM_VERSION="13.0"
+APP_VERSION="${APP_VERSION:-1.1.0}"
+APP_BUILD_NUMBER="${APP_BUILD_NUMBER:-2}"
 
 CAPTURE_PRODUCT="WrongQuestionDailyOrganizer"
 CAPTURE_DISPLAY_NAME="错题每日自动化整理"
@@ -62,9 +64,9 @@ stage_bundle() {
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0.0</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$APP_BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>LSUIElement</key>

@@ -7,7 +7,7 @@ protocol PracticeRepository: Sendable {
     func loadSettings() async throws -> PracticeSettings
     func saveSettings(_ settings: PracticeSettings) async throws
     func startSession(mode: PracticeMode) async throws -> PracticeSessionState
-    func resumeSession(id: String) async throws -> PracticeSessionState
+    func finishSession(id: String) throws
     func submit(
         sessionID: String,
         itemID: String,

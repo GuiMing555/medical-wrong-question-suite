@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var statusMessage: String?
+    @State private var swipeThreshold = PracticeInteractionPreferences.defaultSwipeThreshold
 
     var body: some View {
         Form {
@@ -46,6 +47,17 @@ struct SettingsView: View {
                 }
             }
 
+            Section("翻页手势") {
+                LabeledContent("切换触发距离") {
+                    Text("\(Int(swipeThreshold)) 点")
+                        .monospacedDigit()
+                }
+                Slider(value: $swipeThreshold, in: 60...220, step: 10)
+                Text("滑动松手时达到该距离才会翻页；数值越小越灵敏。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if let statusMessage {
                 Text(statusMessage)
                     .font(.caption)
@@ -63,7 +75,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 430)
+        .frame(width: 520, height: 540)
         .task { await load() }
         .overlay {
             if isLoading {
@@ -85,6 +97,12 @@ struct SettingsView: View {
         do {
             settings = try await store.loadSettings()
             useAllEligibleQuestions = settings.questionsPerSession == nil
+            let savedThreshold = UserDefaults.standard.double(
+                forKey: PracticeInteractionPreferences.swipeThresholdKey
+            )
+            swipeThreshold = savedThreshold > 0
+                ? savedThreshold
+                : PracticeInteractionPreferences.defaultSwipeThreshold
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -100,6 +118,10 @@ struct SettingsView: View {
                 settings.questionsPerSession = 20
             }
             try await store.saveSettings(settings)
+            UserDefaults.standard.set(
+                swipeThreshold,
+                forKey: PracticeInteractionPreferences.swipeThresholdKey
+            )
             statusMessage = "设置已保存。"
         } catch {
             statusMessage = error.localizedDescription
