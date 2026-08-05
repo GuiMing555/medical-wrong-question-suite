@@ -93,4 +93,4 @@ swift test
 
 ## 许可证
 
-项目代码采用 [MIT License](LICENSE)。随项目提供的 Noto Sans CJK 字体采用 [SIL Open Font License 1.1](Resources/DocxFonts/OFL.txt)。
+项目代码版权所有 © 2026 GuiMing555，并采用 [GNU General Public License v3.0](LICENSE)（GPL-3.0-only）发布。随项目提供的 Noto Sans CJK 字体不适用 GPL，仍采用其独立的 [SIL Open Font License 1.1](Resources/DocxFonts/OFL.txt)。
