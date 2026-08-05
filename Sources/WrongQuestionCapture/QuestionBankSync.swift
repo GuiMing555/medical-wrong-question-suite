@@ -69,6 +69,7 @@ final class QuestionBankSync {
         for record in eligible {
             do {
                 let draft = try makeDraft(from: record)
+                // 截图同步只导入题目；错题状态只由实际答错或用户明确标记产生。
                 let result = try store.importCapturedQuestion(draft)
                 switch result.status {
                 case .inserted: report.insertedCount += 1

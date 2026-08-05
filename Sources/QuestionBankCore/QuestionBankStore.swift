@@ -88,10 +88,7 @@ public final class QuestionBankStore: @unchecked Sendable {
     }
 
     @discardableResult
-    public func importCapturedQuestion(
-        _ captured: CapturedQuestionDraft,
-        markWrong: Bool = true
-    ) throws -> QuestionImportResult {
+    public func importCapturedQuestion(_ captured: CapturedQuestionDraft) throws -> QuestionImportResult {
         let normalizedCorrect = Set(captured.correctLabels.map(normalizeLabel))
         let options = captured.options.map { option in
             OptionDraft(
@@ -144,17 +141,12 @@ public final class QuestionBankStore: @unchecked Sendable {
                         .text(captured.sourceImagePath), .real(captured.capturedAt.timeIntervalSince1970), .real(now)
                     ]
                 )
-                var added = false
-                if markWrong {
-                    let state = try stateRow(questionID: imported.questionID)
-                    added = state?["is_wrong_book"]?.int != 1
-                    try ensureWrongBook(questionID: imported.questionID, at: captured.capturedAt, resetProgress: true)
-                    try appendChange(entityType: "wrong_book", entityID: imported.questionID, action: "capture_added")
-                }
                 if imported.status == .unchanged {
-                    imported = QuestionImportResult(questionID: imported.questionID, status: .updated, addedToWrongBook: added)
-                } else {
-                    imported = QuestionImportResult(questionID: imported.questionID, status: imported.status, addedToWrongBook: added)
+                    imported = QuestionImportResult(
+                        questionID: imported.questionID,
+                        status: .updated,
+                        addedToWrongBook: false
+                    )
                 }
                 return imported
             }

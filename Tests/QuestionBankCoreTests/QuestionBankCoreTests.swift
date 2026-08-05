@@ -125,12 +125,13 @@ final class QuestionBankCoreTests: XCTestCase {
         XCTAssertEqual(try store.dashboard().answeredTodayCount, 1)
     }
 
-    func testCaptureEventIdempotencyAndNewCaptureReaddsRemovedQuestion() throws {
+    func testCaptureImportDoesNotCreateOrRestoreWrongBookState() throws {
         try store.updateSettings(SettingsSnapshot(normalReviewIntervalDays: 7, wrongRequiredConsecutiveCorrect: 1))
         let first = capturedQuestion(hash: "image-hash-1")
         let inserted = try store.importCapturedQuestion(first)
         XCTAssertEqual(inserted.status, .inserted)
-        XCTAssertTrue(inserted.addedToWrongBook)
+        XCTAssertFalse(inserted.addedToWrongBook)
+        XCTAssertEqual(try store.wrongBookCount(), 0)
 
         let duplicate = try store.importCapturedQuestion(first)
         XCTAssertEqual(duplicate.status, .unchanged)
@@ -145,8 +146,50 @@ final class QuestionBankCoreTests: XCTestCase {
 
         let newEvent = try store.importCapturedQuestion(capturedQuestion(hash: "image-hash-2"))
         XCTAssertEqual(newEvent.status, .updated)
-        XCTAssertTrue(newEvent.addedToWrongBook)
-        XCTAssertEqual(try store.wrongBookCount(), 1)
+        XCTAssertFalse(newEvent.addedToWrongBook)
+        XCTAssertEqual(try store.wrongBookCount(), 0)
+    }
+
+    func testMigration3ClearsLegacyUnansweredCaptureWrongState() throws {
+        let imported = try store.importCapturedQuestion(capturedQuestion(hash: "legacy-capture-hash"))
+        store = nil
+
+        var rawDatabase: SQLiteDatabase? = try SQLiteDatabase(url: databaseURL)
+        let timestamp = Date(timeIntervalSince1970: 1_800_000_000).timeIntervalSince1970
+        try rawDatabase?.execute(
+            """
+            INSERT INTO question_state(question_id, is_wrong_book, added_to_wrong_at, updated_at)
+            VALUES (?, 1, ?, ?)
+            """,
+            [.text(imported.questionID), .real(timestamp), .real(timestamp)]
+        )
+        try rawDatabase?.execute(
+            """
+            INSERT INTO change_log(source_app, entity_type, entity_id, action, created_at)
+            VALUES ('capture', 'wrong_book', ?, 'capture_added', ?)
+            """,
+            [.text(imported.questionID), .real(timestamp)]
+        )
+        try rawDatabase?.execute("DELETE FROM schema_migrations WHERE version = 3")
+        rawDatabase = nil
+
+        store = try QuestionBankStore(databaseURL: databaseURL, sourceApplication: "migration-test")
+        XCTAssertEqual(try store.wrongBookCount(), 0)
+
+        store = nil
+        rawDatabase = try SQLiteDatabase(url: databaseURL)
+        XCTAssertEqual(
+            try rawDatabase?.scalarInt("SELECT COUNT(*) FROM schema_migrations WHERE version = 3"),
+            1
+        )
+        XCTAssertEqual(
+            try rawDatabase?.scalarInt(
+                "SELECT COUNT(*) FROM change_log WHERE action = 'cleared_auto_capture_wrong'"
+            ),
+            1
+        )
+        rawDatabase = nil
+        store = try QuestionBankStore(databaseURL: databaseURL, sourceApplication: "tests")
     }
 
     func testSameCaptureHashRefreshesCorrectedExplanationWithoutReaddingWrongBook() throws {
@@ -167,7 +210,7 @@ final class QuestionBankCoreTests: XCTestCase {
         let refreshed = try store.importCapturedQuestion(corrected)
         XCTAssertEqual(refreshed.status, .updated)
         XCTAssertFalse(refreshed.addedToWrongBook)
-        XCTAssertEqual(try store.wrongBookCount(), 1)
+        XCTAssertEqual(try store.wrongBookCount(), 0)
 
         let session = try store.startSession(mode: .normal, seed: 11)
         XCTAssertEqual(session.currentItem?.explanation, "修正后的截图解析")

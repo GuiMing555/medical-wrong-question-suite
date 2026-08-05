@@ -1,7 +1,7 @@
 import Foundation
 
 enum QuestionBankSchema {
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     static func migrate(_ db: SQLiteDatabase) throws {
         try db.execute("""
@@ -21,6 +21,7 @@ enum QuestionBankSchema {
                 switch version {
                 case 1: try migration1(db)
                 case 2: try migration2(db)
+                case 3: try migration3(db)
                 default: break
                 }
                 try db.execute(
@@ -204,5 +205,51 @@ enum QuestionBankSchema {
             "CREATE INDEX capture_events_question ON capture_events(question_id, captured_at DESC)"
         ]
         for statement in statements { try db.execute(statement) }
+    }
+
+    private static func migration3(_ db: SQLiteDatabase) throws {
+        let condition = """
+            is_wrong_book = 1
+            AND total_attempts = 0
+            AND EXISTS (
+                SELECT 1 FROM change_log c
+                WHERE c.entity_type = 'wrong_book'
+                  AND c.entity_id = question_state.question_id
+                  AND c.action = 'capture_added'
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM change_log c
+                WHERE c.entity_type = 'wrong_book'
+                  AND c.entity_id = question_state.question_id
+                  AND c.action = 'manually_added'
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM attempts a WHERE a.question_id = question_state.question_id
+            )
+            """
+        let affected = try db.scalarInt("SELECT COUNT(*) FROM question_state WHERE \(condition)")
+        guard affected > 0 else { return }
+
+        let timestamp = Date().timeIntervalSince1970
+        try db.execute(
+            """
+            UPDATE question_state
+            SET is_wrong_book = 0,
+                consecutive_correct = 0,
+                added_to_wrong_at = NULL,
+                removed_from_wrong_at = NULL,
+                updated_at = ?
+            WHERE \(condition)
+            """,
+            [.real(timestamp)]
+        )
+        try db.execute(
+            """
+            INSERT INTO change_log(source_app, entity_type, entity_id, action, payload_json, created_at)
+            VALUES ('schema_migration', 'wrong_book_cleanup', 'migration-3',
+                    'cleared_auto_capture_wrong', ?, ?)
+            """,
+            [.text("{\"cleared\":\(affected)}"), .real(timestamp)]
+        )
     }
 }
