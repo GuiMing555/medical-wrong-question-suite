@@ -240,6 +240,16 @@ final class QuestionBankCoreTests: XCTestCase {
         ))
     }
 
+    func testQuestionTextCleanupRemovesRepeatedCaseSummary() {
+        let duplicated = "女，46岁。进油腻食物后出现阵发性右上腹绞痛，向右肩背部放射1周，症状加重伴发热2小时就诊。1年前 曾诊断为胆石症，未治疗。i 女，46岁。进油腻食物后出现阵发性右上腹绞痛，向右肩背部放射1周，症状加重伴发热2小时就诊。1年前曾诊断为胆石症，未治疗。对该患者诊断最有意义的辅助检查是（）"
+        let expected = "女，46岁。进油腻食物后出现阵发性右上腹绞痛，向右肩背部放射1周，症状加重伴发热2小时就诊。1年前曾诊断为胆石症，未治疗。对该患者诊断最有意义的辅助检查是（）"
+
+        XCTAssertEqual(
+            QuestionTextCleanup.removingRepeatedIntroductoryBlock(from: duplicated),
+            expected
+        )
+    }
+
     func testWrongModeRequiresFiveWrongQuestionsWhileNormalQuestionsRemain() throws {
         for number in 1...6 { try insertQuestion(number: number) }
 

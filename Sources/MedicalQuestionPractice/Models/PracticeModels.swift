@@ -82,10 +82,17 @@ struct AnswerFeedback: Equatable, Sendable {
     var selectedOptionIDs: Set<String>
     var correctOptionIDs: Set<String>
     var explanation: String?
+    var markedAsUnsure: Bool
     var isInWrongBook: Bool
     var wrongBookProgress: WrongBookProgress?
     var removedFromWrongBook: Bool
     var session: PracticeSessionState
+}
+
+struct AnsweredQuestionReview: Equatable, Sendable {
+    var position: Int
+    var question: PracticeQuestion
+    var feedback: AnswerFeedback
 }
 
 enum PracticeRepositoryError: LocalizedError {

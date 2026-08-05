@@ -6,14 +6,20 @@ struct PracticeView: View {
     @State private var submittedAsUnknown = false
 
     private var session: PracticeSessionState? { store.session }
-    private var question: PracticeQuestion? { store.answeredQuestion ?? session?.currentQuestion }
+    private var question: PracticeQuestion? {
+        store.reviewedAnswer?.question ?? store.answeredQuestion ?? session?.currentQuestion
+    }
+    private var displayedFeedback: AnswerFeedback? {
+        store.reviewedAnswer?.feedback ?? store.feedback
+    }
+    private var isReviewingAnswer: Bool { store.reviewedAnswer != nil }
 
     var body: some View {
         VStack(spacing: 0) {
             practiceHeader
             Divider()
 
-            if let session, session.isComplete, store.feedback == nil {
+            if let session, session.isComplete, displayedFeedback == nil, !isReviewingAnswer {
                 CompletionView(mode: session.mode) {
                     store.leavePractice()
                 }
@@ -28,7 +34,7 @@ struct PracticeView: View {
 
                         options(for: question)
 
-                        if let feedback = store.feedback {
+                        if let feedback = displayedFeedback {
                             FeedbackView(feedback: feedback, question: question)
                         }
                     }
@@ -44,9 +50,15 @@ struct PracticeView: View {
             }
         }
         .onChange(of: question?.id) { _ in
-            selectedOptionIDs = []
-            submittedAsUnknown = false
+            selectedOptionIDs = displayedFeedback?.selectedOptionIDs ?? []
+            submittedAsUnknown = displayedFeedback?.markedAsUnsure == true
         }
+        .background(
+            TrackpadHorizontalSwipeBridge(
+                onSwipeLeft: { handleNextGesture() },
+                onSwipeRight: { store.showPreviousQuestion() }
+            )
+        )
         .onDisappear {
             store.leavePractice()
         }
@@ -72,7 +84,7 @@ struct PracticeView: View {
                 .font(.callout.weight(.medium))
                 .foregroundStyle(store.dashboard.wrongBookQuestions > 0 ? Color.red : Color.secondary)
                 Spacer()
-                Text("第 \(min(session.currentIndex + 1, session.totalCount)) 题，共 \(session.totalCount) 题")
+                Text("第 \(store.displayedQuestionNumber) 题，共 \(session.totalCount) 题")
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                 ProgressView(
@@ -115,8 +127,8 @@ struct PracticeView: View {
             }
 
             UnknownAnswerRow(
-                isSelected: submittedAsUnknown,
-                hasFeedback: store.feedback != nil,
+                isSelected: submittedAsUnknown || displayedFeedback?.markedAsUnsure == true,
+                hasFeedback: displayedFeedback != nil,
                 isSubmitting: store.isSubmitting
             ) {
                 selectedOptionIDs = []
@@ -132,7 +144,7 @@ struct PracticeView: View {
             label: optionLabel(index),
             option: option,
             isSelected: selectedOptionIDs.contains(option.id),
-            feedback: store.feedback
+            feedback: displayedFeedback
         ) {
             select(option.id, allowsMultiple: question.allowsMultipleSelection)
         }
@@ -145,12 +157,18 @@ struct PracticeView: View {
 
     private var actionBar: some View {
         HStack {
-            Text(store.feedback == nil ? "数字键 1–9 可快速选择" : "本题记录已保存")
+            Text(actionHint)
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Spacer()
 
-            if store.feedback != nil {
+            if isReviewingAnswer {
+                Button("下一题") {
+                    store.showNextQuestion()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            } else if store.feedback != nil {
                 Button(session?.isComplete == true ? "完成练习" : "下一题") {
                     store.advanceAfterFeedback()
                 }
@@ -184,7 +202,7 @@ struct PracticeView: View {
     }
 
     private func select(_ optionID: String, allowsMultiple: Bool) {
-        guard store.feedback == nil else { return }
+        guard displayedFeedback == nil, !isReviewingAnswer else { return }
         if allowsMultiple {
             if selectedOptionIDs.contains(optionID) {
                 selectedOptionIDs.remove(optionID)
@@ -215,6 +233,19 @@ struct PracticeView: View {
     private func optionLabel(_ index: Int) -> String {
         guard index < 26 else { return String(index + 1) }
         return String(UnicodeScalar(65 + index)!)
+    }
+
+    private var actionHint: String {
+        if displayedFeedback != nil {
+            return "本题记录已保存·触控板双指左右滑动可切换已答题"
+        }
+        return "数字键 1–9 可快速选择·右滑可回看上一题"
+    }
+
+    private func handleNextGesture() {
+        if isReviewingAnswer || store.feedback != nil {
+            store.showNextQuestion()
+        }
     }
 }
 

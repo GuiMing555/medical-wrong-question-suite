@@ -378,6 +378,7 @@ final class WrongQuestionOrganizer {
             with: "",
             options: .regularExpression
         ).trimmingCharacters(in: .whitespacesAndNewlines)
+        question = QuestionTextCleanup.removingRepeatedIntroductoryBlock(from: question)
 
         if question.isEmpty {
             question = "[OCR 未能可靠识别题干，请对照原截图]"
@@ -441,6 +442,7 @@ final class WrongQuestionOrganizer {
         ]
         if exactNoise.contains(line) { return true }
         if line.range(of: #"^\d+$"#, options: .regularExpression) != nil { return true }
+        if line.range(of: #"^[iIl丨|｜-]$"#, options: .regularExpression) != nil { return true }
         if line.range(of: #"^[iIl丨|｜]?(答|单|多|共)$"#, options: .regularExpression) != nil { return true }
         return line.contains("ICP备") || line.contains("焚题库官网") || line.contains("扫码")
     }

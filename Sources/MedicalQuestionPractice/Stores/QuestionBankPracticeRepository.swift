@@ -92,6 +92,7 @@ final class QuestionBankPracticeRepository: PracticeRepository, @unchecked Senda
             selectedOptionIDs: value.selectedOptionIDs,
             correctOptionIDs: value.correctOptionIDs,
             explanation: value.explanation,
+            markedAsUnsure: value.markedAsUnsure,
             isInWrongBook: value.isInWrongBook,
             wrongBookProgress: progress,
             removedFromWrongBook: value.removedFromWrongBook,
