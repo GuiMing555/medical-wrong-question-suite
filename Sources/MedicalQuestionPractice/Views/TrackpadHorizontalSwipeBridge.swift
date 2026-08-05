@@ -1,35 +1,45 @@
 import AppKit
 import SwiftUI
 
+enum TrackpadSwipeDirection: Equatable {
+    case left
+    case right
+}
+
 struct TrackpadHorizontalSwipeBridge: NSViewRepresentable {
-    let onSwipeLeft: () -> Void
-    let onSwipeRight: () -> Void
+    let threshold: CGFloat
+    let onProgress: (CGFloat) -> Void
+    let onEnded: (TrackpadSwipeDirection?, Bool) -> Void
 
     func makeNSView(context: Context) -> SwipeMonitorView {
         let view = SwipeMonitorView()
-        view.onSwipeLeft = onSwipeLeft
-        view.onSwipeRight = onSwipeRight
+        update(view)
         return view
     }
 
     func updateNSView(_ view: SwipeMonitorView, context: Context) {
-        view.onSwipeLeft = onSwipeLeft
-        view.onSwipeRight = onSwipeRight
+        update(view)
     }
 
     static func dismantleNSView(_ view: SwipeMonitorView, coordinator: ()) {
         view.stopMonitoring()
     }
+
+    private func update(_ view: SwipeMonitorView) {
+        view.threshold = threshold
+        view.onProgress = onProgress
+        view.onEnded = onEnded
+    }
 }
 
 final class SwipeMonitorView: NSView {
-    var onSwipeLeft: (() -> Void)?
-    var onSwipeRight: (() -> Void)?
+    var threshold: CGFloat = 110
+    var onProgress: ((CGFloat) -> Void)?
+    var onEnded: ((TrackpadSwipeDirection?, Bool) -> Void)?
 
     private var eventMonitor: Any?
     private var accumulatedHorizontal: CGFloat = 0
     private var accumulatedVertical: CGFloat = 0
-    private var didTriggerCurrentGesture = false
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -65,32 +75,40 @@ final class SwipeMonitorView: NSView {
               !event.phase.isEmpty else { return }
 
         if event.phase.contains(.mayBegin) || event.phase.contains(.began) {
-            resetGesture()
+            resetGesture(notify: true)
         }
 
         let directionMultiplier: CGFloat = event.isDirectionInvertedFromDevice ? -1 : 1
         accumulatedHorizontal += event.scrollingDeltaX * directionMultiplier
         accumulatedVertical += event.scrollingDeltaY * directionMultiplier
 
-        if !didTriggerCurrentGesture,
-           abs(accumulatedHorizontal) >= 70,
-           abs(accumulatedHorizontal) > abs(accumulatedVertical) * 1.25 {
-            didTriggerCurrentGesture = true
-            if accumulatedHorizontal > 0 {
-                onSwipeLeft?()
-            } else {
-                onSwipeRight?()
-            }
+        if abs(accumulatedHorizontal) > abs(accumulatedVertical) * 1.1 {
+            // AppKit reports a physical left swipe as a positive horizontal
+            // delta. SwiftUI offsets use negative values for leftward motion.
+            onProgress?(-accumulatedHorizontal)
         }
 
-        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
-            resetGesture()
+        if event.phase.contains(.ended) {
+            finishGesture()
+        } else if event.phase.contains(.cancelled) {
+            onEnded?(nil, false)
+            resetGesture(notify: true)
         }
     }
 
-    private func resetGesture() {
+    private func finishGesture() {
+        let isHorizontal = abs(accumulatedHorizontal) > abs(accumulatedVertical) * 1.25
+        let direction: TrackpadSwipeDirection? = isHorizontal
+            ? (accumulatedHorizontal > 0 ? .left : .right)
+            : nil
+        let crossesThreshold = isHorizontal && abs(accumulatedHorizontal) >= threshold
+        onEnded?(direction, crossesThreshold)
+        resetGesture(notify: false)
+    }
+
+    private func resetGesture(notify: Bool) {
         accumulatedHorizontal = 0
         accumulatedVertical = 0
-        didTriggerCurrentGesture = false
+        if notify { onProgress?(0) }
     }
 }

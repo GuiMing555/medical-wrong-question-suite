@@ -4,6 +4,10 @@ struct PracticeView: View {
     @ObservedObject var store: PracticeAppStore
     @State private var selectedOptionIDs: Set<String> = []
     @State private var submittedAsUnknown = false
+    @State private var pageOffset: CGFloat = 0
+    @State private var isPageAnimating = false
+    @AppStorage(PracticeInteractionPreferences.swipeThresholdKey)
+    private var swipeThreshold = PracticeInteractionPreferences.defaultSwipeThreshold
 
     private var session: PracticeSessionState? { store.session }
     private var question: PracticeQuestion? {
@@ -19,6 +23,53 @@ struct PracticeView: View {
             practiceHeader
             Divider()
 
+            GeometryReader { geometry in
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor)
+                    practicePage
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .offset(x: pageOffset)
+                        .rotation3DEffect(
+                            .degrees(Double(pageOffset / max(geometry.size.width, 1)) * 4),
+                            axis: (x: 0, y: 1, z: 0),
+                            anchor: pageOffset < 0 ? .leading : .trailing,
+                            perspective: 0.28
+                        )
+                        .shadow(
+                            color: .black.opacity(min(abs(pageOffset) / 900, 0.16)),
+                            radius: min(abs(pageOffset) / 18, 18),
+                            x: pageOffset < 0 ? -5 : 5
+                        )
+                }
+                .clipped()
+                .background(
+                    TrackpadHorizontalSwipeBridge(
+                        threshold: CGFloat(swipeThreshold),
+                        onProgress: { updatePageOffset($0, pageWidth: geometry.size.width) },
+                        onEnded: { direction, crossesThreshold in
+                            finishPageSwipe(
+                                direction: direction,
+                                crossesThreshold: crossesThreshold,
+                                pageWidth: geometry.size.width
+                            )
+                        }
+                    )
+                )
+            }
+        }
+        .onChange(of: question?.id) { _ in
+            selectedOptionIDs = displayedFeedback?.selectedOptionIDs ?? []
+            submittedAsUnknown = displayedFeedback?.markedAsUnsure == true
+        }
+        .onDisappear {
+            store.leavePractice()
+        }
+        .navigationTitle(session?.mode.title ?? "练习")
+    }
+
+    @ViewBuilder
+    private var practicePage: some View {
+        VStack(spacing: 0) {
             if let session, session.isComplete, displayedFeedback == nil, !isReviewingAnswer {
                 CompletionView(mode: session.mode) {
                     store.leavePractice()
@@ -49,20 +100,6 @@ struct PracticeView: View {
                 EmptyPracticeView()
             }
         }
-        .onChange(of: question?.id) { _ in
-            selectedOptionIDs = displayedFeedback?.selectedOptionIDs ?? []
-            submittedAsUnknown = displayedFeedback?.markedAsUnsure == true
-        }
-        .background(
-            TrackpadHorizontalSwipeBridge(
-                onSwipeLeft: { handleNextGesture() },
-                onSwipeRight: { store.showPreviousQuestion() }
-            )
-        )
-        .onDisappear {
-            store.leavePractice()
-        }
-        .navigationTitle(session?.mode.title ?? "练习")
     }
 
     private var practiceHeader: some View {
@@ -242,9 +279,63 @@ struct PracticeView: View {
         return "数字键 1–9 可快速选择·右滑可回看上一题"
     }
 
-    private func handleNextGesture() {
-        if isReviewingAnswer || store.feedback != nil {
-            store.showNextQuestion()
+    private func updatePageOffset(_ rawOffset: CGFloat, pageWidth: CGFloat) {
+        guard !isPageAnimating else { return }
+        let limitedOffset = max(-pageWidth * 0.72, min(pageWidth * 0.72, rawOffset))
+        let directionIsAvailable = limitedOffset < 0
+            ? store.canShowNextQuestion
+            : store.canShowPreviousQuestion
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            pageOffset = directionIsAvailable ? limitedOffset : limitedOffset * 0.18
+        }
+    }
+
+    private func finishPageSwipe(
+        direction: TrackpadSwipeDirection?,
+        crossesThreshold: Bool,
+        pageWidth: CGFloat
+    ) {
+        guard !isPageAnimating else { return }
+        let canChangePage: Bool
+        switch direction {
+        case .left: canChangePage = store.canShowNextQuestion
+        case .right: canChangePage = store.canShowPreviousQuestion
+        case nil: canChangePage = false
+        }
+        guard crossesThreshold, canChangePage, let direction else {
+            withAnimation(.interpolatingSpring(stiffness: 420, damping: 38)) {
+                pageOffset = 0
+            }
+            return
+        }
+
+        isPageAnimating = true
+        let exitOffset = direction == .left ? -pageWidth : pageWidth
+        withAnimation(.easeOut(duration: 0.13)) {
+            pageOffset = exitOffset
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.13) {
+            switch direction {
+            case .left: store.showNextQuestion()
+            case .right: store.showPreviousQuestion()
+            }
+
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                pageOffset = direction == .left
+                    ? min(pageWidth * 0.22, 190)
+                    : -min(pageWidth * 0.22, 190)
+            }
+            withAnimation(.interpolatingSpring(stiffness: 500, damping: 42)) {
+                pageOffset = 0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                isPageAnimating = false
+            }
         }
     }
 }

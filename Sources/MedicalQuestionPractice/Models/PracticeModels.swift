@@ -26,6 +26,11 @@ struct PracticeSettings: Equatable, Sendable {
     var questionsPerSession: Int? = nil
 }
 
+enum PracticeInteractionPreferences {
+    static let swipeThresholdKey = "practicePageSwipeThreshold"
+    static let defaultSwipeThreshold = 110.0
+}
+
 struct DashboardSummary: Equatable, Sendable {
     var totalQuestions: Int
     var unseenQuestions: Int

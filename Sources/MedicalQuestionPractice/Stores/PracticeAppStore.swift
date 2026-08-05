@@ -136,6 +136,16 @@ final class PracticeAppStore: ObservableObject {
         return true
     }
 
+    var canShowPreviousQuestion: Bool {
+        if let reviewedAnswerIndex { return reviewedAnswerIndex > 0 }
+        if feedback != nil { return answerHistory.count >= 2 }
+        return !answerHistory.isEmpty
+    }
+
+    var canShowNextQuestion: Bool {
+        reviewedAnswerIndex != nil || feedback != nil
+    }
+
     var displayedQuestionNumber: Int {
         if let reviewedAnswer { return reviewedAnswer.position + 1 }
         if feedback != nil, let latest = answerHistory.last { return latest.position + 1 }
