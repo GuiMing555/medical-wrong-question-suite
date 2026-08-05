@@ -232,14 +232,51 @@ final class QuestionBankCoreTests: XCTestCase {
         XCTAssertNoThrow(try store.startSession(mode: .wrongBook, seed: 31))
     }
 
-    func testCorrectButUnsureEntersWrongBook() throws {
+    func testUnknownAnswerEntersWrongBookAndReturnsCorrectAnswer() throws {
         try insertQuestion(number: 1)
         let session = try store.startSession(mode: .normal, seed: 7)
-        let result = try answer(session, correct: true, markUnsure: true)
-        XCTAssertTrue(result.isCorrect)
+        let item = try XCTUnwrap(session.currentItem)
+        let correctOption = try XCTUnwrap(item.options.first { $0.originalLabel == "B" })
+        let result = try store.submit(
+            SubmitAnswerRequest(
+                sessionID: session.id,
+                itemID: item.itemID,
+                selectedOptionIDs: [],
+                markAsUnsure: true
+            )
+        )
+        XCTAssertFalse(result.isCorrect)
         XCTAssertTrue(result.markedAsUnsure)
         XCTAssertTrue(result.isInWrongBook)
         XCTAssertEqual(result.wrongProgressAfter, 0)
+        XCTAssertEqual(result.correctOptionIDs, [correctOption.id])
+        XCTAssertEqual(result.explanation, "解析 1")
+    }
+
+    func testFinishingSessionLeavesUnansweredQuestionsEligible() throws {
+        try insertQuestion(number: 1)
+        try insertQuestion(number: 2)
+        let session = try store.startSession(mode: .normal, seed: 40)
+
+        try store.finishSession(id: session.id)
+
+        XCTAssertNil(try store.currentSession())
+        XCTAssertTrue(try store.session(id: session.id).isComplete)
+        XCTAssertEqual(try store.dashboard().unseenCount, 2)
+
+        let next = try store.startSession(mode: .normal, seed: 41, resumeExisting: false)
+        XCTAssertNotEqual(next.id, session.id)
+        XCTAssertEqual(next.currentIndex, 0)
+    }
+
+    func testFinishingActiveSessionsClearsOrphanedRound() throws {
+        try insertQuestion(number: 1)
+        let session = try store.startSession(mode: .normal, seed: 42)
+
+        try store.finishActiveSessions()
+
+        XCTAssertNil(try store.currentSession())
+        XCTAssertTrue(try store.session(id: session.id).isComplete)
     }
 
     func testTwoApplicationsCanRaceToMigrateTheSameNewDatabase() throws {

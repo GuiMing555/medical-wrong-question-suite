@@ -41,23 +41,11 @@ final class PracticeAppStore: ObservableObject {
         }
     }
 
-    func resumeActiveSession() async {
-        guard let activeSession = dashboard.activeSession, !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            feedback = nil
-            answeredQuestion = nil
-            session = try await repository.resumeSession(id: activeSession.id)
-        } catch {
-            present(error)
-        }
-    }
-
     func submit(selectedOptionIDs: Set<String>, markAsUnsure: Bool) async {
         guard let session, let question = session.currentQuestion,
               feedback == nil, !isSubmitting else { return }
 
+        let submittedSessionID = session.id
         isSubmitting = true
         answeredQuestion = question
         let token = pendingSubmissionTokens[question.id] ?? UUID().uuidString
@@ -71,12 +59,14 @@ final class PracticeAppStore: ObservableObject {
                 submissionToken: token,
                 markAsUnsure: markAsUnsure
             )
+            pendingSubmissionTokens.removeValue(forKey: question.id)
+            dashboard = try await repository.dashboard()
+            guard self.session?.id == submittedSessionID else { return }
             // The repository has committed the answer before this UI state changes.
             feedback = result
             self.session = result.session
-            pendingSubmissionTokens.removeValue(forKey: question.id)
-            dashboard = try await repository.dashboard()
         } catch {
+            guard self.session?.id == submittedSessionID else { return }
             present(error)
         }
     }
@@ -89,9 +79,18 @@ final class PracticeAppStore: ObservableObject {
     }
 
     func leavePractice() {
+        let sessionID = session?.id
         feedback = nil
         answeredQuestion = nil
         session = nil
+        pendingSubmissionTokens.removeAll()
+        if let sessionID {
+            do {
+                try repository.finishSession(id: sessionID)
+            } catch {
+                present(error)
+            }
+        }
         Task { await refreshDashboard() }
     }
 

@@ -3,7 +3,7 @@ import SwiftUI
 struct PracticeView: View {
     @ObservedObject var store: PracticeAppStore
     @State private var selectedOptionIDs: Set<String> = []
-    @State private var markAsUnsure = false
+    @State private var submittedAsUnknown = false
 
     private var session: PracticeSessionState? { store.session }
     private var question: PracticeQuestion? { store.answeredQuestion ?? session?.currentQuestion }
@@ -30,9 +30,6 @@ struct PracticeView: View {
 
                         if let feedback = store.feedback {
                             FeedbackView(feedback: feedback, question: question)
-                        } else {
-                            Toggle("这题虽然选对了，但是蒙的或仍需练习", isOn: $markAsUnsure)
-                                .toggleStyle(.checkbox)
                         }
                     }
                     .padding(32)
@@ -48,7 +45,10 @@ struct PracticeView: View {
         }
         .onChange(of: question?.id) { _ in
             selectedOptionIDs = []
-            markAsUnsure = false
+            submittedAsUnknown = false
+        }
+        .onDisappear {
+            store.leavePractice()
         }
         .navigationTitle(session?.mode.title ?? "练习")
     }
@@ -58,7 +58,7 @@ struct PracticeView: View {
             Button {
                 store.leavePractice()
             } label: {
-                Label("返回主页", systemImage: "chevron.left")
+                Label("交卷并返回主页", systemImage: "chevron.left")
             }
             .keyboardShortcut(.escape, modifiers: [])
 
@@ -112,6 +112,16 @@ struct PracticeView: View {
         VStack(spacing: 10) {
             ForEach(Array(question.options.enumerated()), id: \.element.id) { index, option in
                 optionRow(option, index: index, question: question)
+            }
+
+            UnknownAnswerRow(
+                isSelected: submittedAsUnknown,
+                hasFeedback: store.feedback != nil,
+                isSubmitting: store.isSubmitting
+            ) {
+                selectedOptionIDs = []
+                submittedAsUnknown = true
+                submitCurrentAnswer([], markAsUnknown: true)
             }
         }
     }
@@ -187,13 +197,15 @@ struct PracticeView: View {
         }
     }
 
-    private func submitCurrentAnswer(_ selection: Set<String>) {
-        let unsure = markAsUnsure
+    private func submitCurrentAnswer(_ selection: Set<String>, markAsUnknown: Bool = false) {
         Task {
             await store.submit(
                 selectedOptionIDs: selection,
-                markAsUnsure: unsure
+                markAsUnsure: markAsUnknown
             )
+            if markAsUnknown, store.feedback == nil {
+                submittedAsUnknown = false
+            }
             if store.feedback?.isCorrect == true {
                 store.advanceAfterFeedback()
             }
@@ -203,6 +215,43 @@ struct PracticeView: View {
     private func optionLabel(_ index: Int) -> String {
         guard index < 26 else { return String(index + 1) }
         return String(UnicodeScalar(65 + index)!)
+    }
+}
+
+private struct UnknownAnswerRow: View {
+    let isSelected: Bool
+    let hasFeedback: Bool
+    let isSubmitting: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 12) {
+                Text("?")
+                    .font(.callout.weight(.semibold))
+                    .frame(width: 28, height: 28)
+                    .background(isSelected ? Color.red.opacity(0.18) : Color.secondary.opacity(0.12), in: Circle())
+                Text("我不会")
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if isSelected, hasFeedback {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                }
+            }
+            .padding(14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(isSelected ? Color.red.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? Color.red : Color.secondary.opacity(0.25), lineWidth: isSelected ? 1.5 : 1)
+        }
+        .disabled(hasFeedback || isSubmitting)
+        .accessibilityLabel("我不会")
+        .accessibilityHint("提交本题并加入错题本")
     }
 }
 

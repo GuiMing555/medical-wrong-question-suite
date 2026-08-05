@@ -16,7 +16,7 @@ struct MedicalQuestionPracticeApp: App {
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .disabled(
-                    store.session != nil || store.dashboard.activeSession != nil
+                    store.session != nil
                         || store.dashboard.unseenQuestions + store.dashboard.dueQuestions == 0
                 )
 
@@ -25,8 +25,7 @@ struct MedicalQuestionPracticeApp: App {
                 }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
                 .disabled(
-                    store.session != nil || store.dashboard.activeSession != nil
-                        || store.dashboard.wrongBookQuestions == 0
+                    store.session != nil || store.dashboard.wrongBookQuestions == 0
                 )
             }
         }

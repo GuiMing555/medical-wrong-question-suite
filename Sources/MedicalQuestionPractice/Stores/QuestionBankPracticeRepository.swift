@@ -22,8 +22,7 @@ final class QuestionBankPracticeRepository: PracticeRepository, @unchecked Senda
             unseenQuestions: value.unseenCount,
             dueQuestions: value.dueNormalCount,
             wrongBookQuestions: value.wrongBookCount,
-            answeredToday: value.answeredTodayCount,
-            activeSession: value.activeSession.map(mapSummary)
+            answeredToday: value.answeredTodayCount
         )
     }
 
@@ -48,7 +47,8 @@ final class QuestionBankPracticeRepository: PracticeRepository, @unchecked Senda
 
     func startSession(mode: PracticeMode) async throws -> PracticeSessionState {
         do {
-            let value = try store.startSession(mode: mapMode(mode), resumeExisting: true)
+            try store.finishActiveSessions()
+            let value = try store.startSession(mode: mapMode(mode), resumeExisting: false)
             return mapSession(value)
         } catch QuestionBankError.wrongModeLocked(let unseenCount, let wrongCount) {
             throw PracticeRepositoryError.wrongModeLocked(
@@ -60,8 +60,8 @@ final class QuestionBankPracticeRepository: PracticeRepository, @unchecked Senda
         }
     }
 
-    func resumeSession(id: String) async throws -> PracticeSessionState {
-        mapSession(try store.session(id: id))
+    func finishSession(id: String) throws {
+        try store.finishSession(id: id)
     }
 
     func submit(
@@ -111,15 +111,6 @@ final class QuestionBankPracticeRepository: PracticeRepository, @unchecked Senda
         case .normal: return .normal
         case .wrongBook: return .wrongBook
         }
-    }
-
-    private func mapSummary(_ value: PracticeSessionSummary) -> ActiveSessionSummary {
-        ActiveSessionSummary(
-            id: value.id,
-            mode: mapMode(value.mode),
-            answeredCount: value.answeredCount,
-            totalCount: value.totalCount
-        )
     }
 
     private func mapSession(_ value: PracticeSessionSnapshot) -> PracticeSessionState {
@@ -173,7 +164,7 @@ private struct UnavailablePracticeRepository: PracticeRepository {
     func loadSettings() async throws -> PracticeSettings { throw unavailable }
     func saveSettings(_ settings: PracticeSettings) async throws { throw unavailable }
     func startSession(mode: PracticeMode) async throws -> PracticeSessionState { throw unavailable }
-    func resumeSession(id: String) async throws -> PracticeSessionState { throw unavailable }
+    func finishSession(id: String) throws { throw unavailable }
     func submit(
         sessionID: String,
         itemID: String,

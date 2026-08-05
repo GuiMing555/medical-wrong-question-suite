@@ -32,25 +32,14 @@ struct DashboardSummary: Equatable, Sendable {
     var dueQuestions: Int
     var wrongBookQuestions: Int
     var answeredToday: Int
-    var activeSession: ActiveSessionSummary?
 
     static let empty = DashboardSummary(
         totalQuestions: 0,
         unseenQuestions: 0,
         dueQuestions: 0,
         wrongBookQuestions: 0,
-        answeredToday: 0,
-        activeSession: nil
+        answeredToday: 0
     )
-}
-
-struct ActiveSessionSummary: Identifiable, Equatable, Sendable {
-    var id: String
-    var mode: PracticeMode
-    var answeredCount: Int
-    var totalCount: Int
-
-    var progressText: String { "\(answeredCount) / \(totalCount)" }
 }
 
 struct PracticeOption: Identifiable, Equatable, Sendable {
