@@ -5,6 +5,8 @@ final class SettingsWindowController: NSWindowController {
     var onOrganize: (() -> Void)?
 
     private let shortcutPopup = NSPopUpButton()
+    private let recognitionPopup = NSPopUpButton()
+    private let recognitionHint = NSTextField(wrappingLabelWithString: "")
     private let capturePathField = NSTextField()
     private let outputPathField = NSTextField()
     private let dailyCheckbox = NSButton(checkboxWithTitle: "每天 15:00 由本机自动整理", target: nil, action: nil)
@@ -12,7 +14,7 @@ final class SettingsWindowController: NSWindowController {
 
     convenience init(settings: AppSettings) {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 610),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -30,6 +32,8 @@ final class SettingsWindowController: NSWindowController {
         outputPathField.stringValue = settings.outputFolderPath
         dailyCheckbox.state = settings.dailyOrganizeEnabled ? .on : .off
         shortcutPopup.selectItem(at: CaptureShortcut.allCases.firstIndex(of: settings.captureShortcut) ?? 0)
+        recognitionPopup.selectItem(at: RecognitionMode.allCases.firstIndex(of: settings.recognitionMode) ?? 0)
+        updateRecognitionHint()
     }
 
     func showStatus(_ text: String, isError: Bool = false) {
@@ -46,6 +50,9 @@ final class SettingsWindowController: NSWindowController {
         intro.textColor = .secondaryLabelColor
 
         shortcutPopup.addItems(withTitles: CaptureShortcut.allCases.map(\.title))
+        recognitionPopup.addItems(withTitles: RecognitionMode.allCases.map(\.title))
+        recognitionPopup.target = self
+        recognitionPopup.action = #selector(recognitionModeChanged)
 
         let captureRow = folderRow(
             label: "截图保存位置",
@@ -63,6 +70,11 @@ final class SettingsWindowController: NSWindowController {
         let targetHint = NSTextField(wrappingLabelWithString: "设定目标窗口的快捷键固定为 Control + Option + Shift + 1。右 Shift 只有单独轻点时才截图，不影响组合键。")
         targetHint.textColor = .secondaryLabelColor
         targetHint.font = .systemFont(ofSize: 11)
+
+        let recognitionLabel = NSTextField(labelWithString: "截图识别方式")
+        recognitionLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        recognitionHint.textColor = .secondaryLabelColor
+        recognitionHint.font = .systemFont(ofSize: 11)
 
         let outputsTitle = NSTextField(labelWithString: "整理后生成三份可打印文档")
         outputsTitle.font = .systemFont(ofSize: 13, weight: .medium)
@@ -90,6 +102,8 @@ final class SettingsWindowController: NSWindowController {
             sectionSeparator(),
             shortcutLabel, shortcutPopup, targetHint,
             sectionSeparator(),
+            recognitionLabel, recognitionPopup, recognitionHint,
+            sectionSeparator(),
             captureRow, outputRow,
             sectionSeparator(),
             dailyCheckbox, outputsTitle, outputs,
@@ -102,10 +116,12 @@ final class SettingsWindowController: NSWindowController {
         content.addSubview(stack)
 
         shortcutPopup.widthAnchor.constraint(equalToConstant: 330).isActive = true
+        recognitionPopup.widthAnchor.constraint(equalToConstant: 330).isActive = true
         captureRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         outputRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         intro.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         targetHint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        recognitionHint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         statusLabel.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         buttonRow.setHuggingPriority(.required, for: .horizontal)
 
@@ -160,12 +176,23 @@ final class SettingsWindowController: NSWindowController {
         }
     }
 
+    @objc private func recognitionModeChanged() {
+        updateRecognitionHint()
+    }
+
+    private func updateRecognitionHint() {
+        let mode = RecognitionMode.allCases[safe: recognitionPopup.indexOfSelectedItem] ?? .fentiQuestionBank
+        recognitionHint.stringValue = mode.detail
+    }
+
     @objc private func saveSettings() {
         let shortcut = CaptureShortcut.allCases[safe: shortcutPopup.indexOfSelectedItem] ?? .rightShift
+        let recognitionMode = RecognitionMode.allCases[safe: recognitionPopup.indexOfSelectedItem] ?? .fentiQuestionBank
         let settings = AppSettings(
             captureFolderPath: capturePathField.stringValue,
             outputFolderPath: outputPathField.stringValue,
             captureShortcut: shortcut,
+            recognitionMode: recognitionMode,
             dailyOrganizeEnabled: dailyCheckbox.state == .on
         )
         guard let onSave else { return }

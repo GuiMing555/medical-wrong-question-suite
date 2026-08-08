@@ -113,7 +113,7 @@ final class WrongQuestionOrganizer {
         var updatedCount = 0
         if state.schemaVersion < 8 {
             for index in state.items.indices {
-                let parsed = parse(rawText: state.items[index].rawText)
+                let parsed = parse(rawText: state.items[index].rawText, recognitionMode: settings.recognitionMode)
                 state.items[index].question = parsed.question
                 state.items[index].options = parsed.options
                 state.items[index].correctAnswer = parsed.correctAnswer
@@ -125,6 +125,28 @@ final class WrongQuestionOrganizer {
                 updatedCount += 1
             }
             state.schemaVersion = 8
+        }
+        if settings.recognitionMode == .fentiQuestionBank {
+            for index in state.items.indices {
+                let normalizedQuestion = normalizedFentiMedicalText(state.items[index].question)
+                let normalizedOptions = state.items[index].options.map(normalizedFentiMedicalText)
+                let normalizedExplanation = normalizedFentiMedicalText(state.items[index].explanation)
+                guard normalizedQuestion != state.items[index].question ||
+                        normalizedOptions != state.items[index].options ||
+                        normalizedExplanation != state.items[index].explanation
+                else { continue }
+                state.items[index].question = normalizedQuestion
+                state.items[index].options = normalizedOptions
+                state.items[index].explanation = normalizedExplanation
+                if !normalizedExplanation.hasPrefix("待人工补充") {
+                    state.items[index].knowledgePoints = extractKnowledgePoints(
+                        from: normalizedExplanation,
+                        question: normalizedQuestion
+                    )
+                }
+                state.items[index].recognizedAt = Date()
+                updatedCount += 1
+            }
         }
         let images = try discoverImages(under: root, excluding: output)
         var itemsByPath = Dictionary(uniqueKeysWithValues: state.items.map { ($0.sourcePath, $0) })
@@ -138,8 +160,8 @@ final class WrongQuestionOrganizer {
                 continue
             }
 
-            let rawText = try recognizeText(in: imageURL)
-            let parsed = parse(rawText: rawText)
+            let rawText = try recognizeText(in: imageURL, recognitionMode: settings.recognitionMode)
+            let parsed = parse(rawText: rawText, recognitionMode: settings.recognitionMode)
             let old = itemsByPath[path]
             let item = WrongQuestionItem(
                 id: old?.id ?? String(format: "WQ%04d", nextNumber),
@@ -202,7 +224,9 @@ final class WrongQuestionOrganizer {
 
         // 题库同步是附加产物：JSON、Word 和问题图片已经落盘后才执行。
         // 即使数据库暂时不可写，也不得破坏原有整理结果。
-        let syncRecords = state.items.map {
+        // 连续误截图和非连续重复记录只保留在整理历史中；可刷题库按题干只同步一份，
+        // 避免相同题目的多个截图轮流覆盖同一数据库记录。
+        let syncRecords = deduplicated.items.map {
             CapturedQuestionRecord(
                 sourcePath: $0.sourcePath,
                 sourceHash: $0.sourceHash,
@@ -272,7 +296,7 @@ final class WrongQuestionOrganizer {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    private func recognizeText(in url: URL) throws -> String {
+    private func recognizeText(in url: URL, recognitionMode: RecognitionMode) throws -> String {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
         else {
@@ -280,16 +304,26 @@ final class WrongQuestionOrganizer {
                           userInfo: [NSLocalizedDescriptionKey: "无法读取图片：\(url.lastPathComponent)"])
         }
 
-        // 焚题库正文位于窗口左侧。保留接近页面顶端的题干，同时裁掉右侧答题卡。
-        // 旧版顶部裁切过多，会把靠近窗口顶端的题干截掉。
         let width = CGFloat(image.width)
         let height = CGFloat(image.height)
-        let cropRect = CGRect(
-            x: width * 0.055,
-            y: height * 0.035,
-            width: width * 0.690,
-            height: height * 0.930
-        ).integral
+        let cropRect: CGRect
+        switch recognitionMode {
+        case .fentiQuestionBank:
+            // 焚题库正文位于窗口左侧。保留接近页面顶端的题干，同时裁掉右侧答题卡。
+            cropRect = CGRect(
+                x: width * 0.055,
+                y: height * 0.035,
+                width: width * 0.690,
+                height: height * 0.930
+            ).integral
+        case .general:
+            cropRect = CGRect(
+                x: width * 0.015,
+                y: height * 0.015,
+                width: width * 0.970,
+                height: height * 0.970
+            ).integral
+        }
         guard let cropped = image.cropping(to: cropRect) else {
             throw NSError(domain: "WrongQuestionOrganizer", code: 11,
                           userInfo: [NSLocalizedDescriptionKey: "无法裁切图片：\(url.lastPathComponent)"])
@@ -300,6 +334,14 @@ final class WrongQuestionOrganizer {
         request.recognitionLanguages = ["zh-Hans", "en-US"]
         request.usesLanguageCorrection = true
         request.minimumTextHeight = 0.008
+        if recognitionMode == .fentiQuestionBank {
+            request.customWords = [
+                "参考答案", "我的答案", "参考解析", "单选题", "多选题", "判断题",
+                "HIV", "Horner综合征", "Duroziez双重杂音", "肾小盏", "麻痹性斜视",
+                "Na+", "K+", "促甲状腺激素", "肺动脉瓣狭窄", "前纵韧带", "中度烧伤", "重度烧伤", "特重烧伤",
+                "浅II度烧伤", "深II度烧伤", "III度烧伤"
+            ]
+        }
         try VNImageRequestHandler(cgImage: cropped, options: [:]).perform([request])
 
         let observations = (request.results ?? []).sorted {
@@ -311,16 +353,19 @@ final class WrongQuestionOrganizer {
             .joined(separator: "\n")
     }
 
-    private func parse(rawText: String) -> ParsedQuestion {
+    private func parse(rawText: String, recognitionMode: RecognitionMode) -> ParsedQuestion {
         var lines = rawText.components(separatedBy: .newlines)
             .map(cleanLine)
             .filter {
-                !$0.isEmpty && (!isInterfaceNoise($0) || ExplanationBoundary.isExactMarker($0))
+                !$0.isEmpty && (!isInterfaceNoise($0, recognitionMode: recognitionMode) || ExplanationBoundary.isExactMarker($0))
             }
 
+        let questionMarkerPattern = #"\d*\s*[\[［【(（]\s*(单选题|多选题|判断题)\s*[\]］】)）Jj]?"#
+        let hasQuestionMarker = lines.contains {
+            $0.range(of: questionMarkerPattern, options: .regularExpression) != nil
+        }
         let questionIndex = lines.firstIndex { line in
-            line.range(of: #"\d*\s*[\[［【(（]\s*(单选题|多选题|判断题)\s*[\]］】)）]"#,
-                       options: .regularExpression) != nil ||
+            line.range(of: questionMarkerPattern, options: .regularExpression) != nil ||
             line.contains("单选题") || line.contains("多选题") || line.contains("判断题")
         } ?? 0
         if questionIndex > 0 { lines = Array(lines[questionIndex...]) }
@@ -352,10 +397,20 @@ final class WrongQuestionOrganizer {
                 let line = questionArea[index]
                 if let option = optionComponents(in: line),
                    let labelIndex = optionLabelIndex(option.label), labelIndex < 4 {
-                    recovered[labelIndex] = option.text
+                    recovered[labelIndex] = cleanedOptionText(
+                        option.text,
+                        expectedLabel: option.label,
+                        recognitionMode: recognitionMode
+                    )
                     expected = max(expected, labelIndex + 1)
-                } else if expected < 4, let text = unlabeledOptionCandidate(from: line) {
-                    recovered[expected] = text
+                } else if expected < 4 {
+                    let label = String(UnicodeScalar(65 + expected)!)
+                    guard let text = unlabeledOptionCandidate(from: line, expectedLabel: label) else { continue }
+                    recovered[expected] = cleanedOptionText(
+                        text,
+                        expectedLabel: label,
+                        recognitionMode: recognitionMode
+                    )
                     expected += 1
                 }
             }
@@ -369,16 +424,20 @@ final class WrongQuestionOrganizer {
 
         var question = questionLines.joined(separator: " ")
         question = question.replacingOccurrences(
-            of: #"^\s*\d+\s*[\[［【(（]\s*(单选题|多选题|判断题)\s*[\]］】)）1lI|｜]?\s*"#,
+            of: #"^\s*\d+\s*[\[［【(（]\s*(单选题|多选题|判断题)\s*[\]］】)）1lI|｜Jj]?\s*"#,
             with: "",
             options: .regularExpression
         ).trimmingCharacters(in: .whitespacesAndNewlines)
         question = question.replacingOccurrences(
-            of: #"\s+[0oOiIl丨|｜]\s*$"#,
+            of: #"\s+[0oOiIl丨|｜Xx◎○〇×]\s*$"#,
             with: "",
             options: .regularExpression
         ).trimmingCharacters(in: .whitespacesAndNewlines)
         question = QuestionTextCleanup.removingRepeatedIntroductoryBlock(from: question)
+        if recognitionMode == .fentiQuestionBank {
+            question = QuestionTextCleanup.removingQuestionBankHeaderArtifacts(from: question)
+            question = normalizedFentiMedicalText(question)
+        }
 
         if question.isEmpty {
             question = "[OCR 未能可靠识别题干，请对照原截图]"
@@ -408,6 +467,9 @@ final class WrongQuestionOrganizer {
             explanation = explanationLines.joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        if recognitionMode == .fentiQuestionBank {
+            explanation = normalizedFentiMedicalText(explanation)
+        }
         if explanation.isEmpty { explanation = "待人工补充：截图中未可靠识别到参考解析。" }
 
         let knowledgePoints = explanation.hasPrefix("待人工补充")
@@ -415,8 +477,13 @@ final class WrongQuestionOrganizer {
             : extractKnowledgePoints(from: explanation, question: question)
         let isBinaryQuestion = questionArea.first?.contains("判断题") == true
         let minimumOptions = isBinaryQuestion ? 2 : 4
+        let suspiciousFentiStem = recognitionMode == .fentiQuestionBank &&
+            isSuspiciousFentiStem(question, hasQuestionMarker: hasQuestionMarker)
+        let suspiciousFentiOptions = recognitionMode == .fentiQuestionBank &&
+            options.contains(where: isSuspiciousFentiOption)
         let needsReview = question.hasPrefix("[OCR") || options.count < minimumOptions ||
-            correctAnswer == "待校对" || explanation.hasPrefix("待人工补充")
+            correctAnswer == "待校对" || explanation.hasPrefix("待人工补充") ||
+            suspiciousFentiStem || suspiciousFentiOptions
 
         return ParsedQuestion(
             question: question,
@@ -432,10 +499,15 @@ final class WrongQuestionOrganizer {
     private func cleanLine(_ value: String) -> String {
         value.replacingOccurrences(of: "\u{00a0}", with: " ")
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(
+                of: #"(?<=[\u4E00-\u9FFF，。；：！？、（）“”])\s+(?=[\u4E00-\u9FFF，。；：！？、（）“”])"#,
+                with: "",
+                options: .regularExpression
+            )
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func isInterfaceNoise(_ line: String) -> Bool {
+    private func isInterfaceNoise(_ line: String, recognitionMode: RecognitionMode) -> Bool {
         let exactNoise: Set<String> = [
             "上一题", "下一题", "查看答案", "试题答疑", "做题笔记", "展开全部解析",
             "收起解析", "答题卡", "收藏", "纠错", "返回", "交卷", "正确", "错误", "确定"
@@ -444,7 +516,16 @@ final class WrongQuestionOrganizer {
         if line.range(of: #"^\d+$"#, options: .regularExpression) != nil { return true }
         if line.range(of: #"^[iIl丨|｜-]$"#, options: .regularExpression) != nil { return true }
         if line.range(of: #"^[iIl丨|｜]?(答|单|多|共)$"#, options: .regularExpression) != nil { return true }
-        return line.contains("ICP备") || line.contains("焚题库官网") || line.contains("扫码")
+        if line.contains("ICP备") || line.contains("扫码") { return true }
+        guard recognitionMode == .fentiQuestionBank else { return false }
+        let fentiExactNoise: Set<String> = [
+            "首页", "题库", "首页 题库", "焚题库", "焚题库官网", "APP工具", "APP下载",
+            "合作加盟", "医学综合", "切换", "章节练习", "模拟试卷"
+        ]
+        if fentiExactNoise.contains(line) { return true }
+        let lowercase = line.lowercased()
+        return lowercase.contains("tiku.hkwx8.com") || lowercase.contains("/burn_exam/") ||
+            lowercase.contains("http://") || lowercase.contains("https://")
     }
 
     private func normalizeOption(_ line: String) -> String {
@@ -460,7 +541,7 @@ final class WrongQuestionOrganizer {
             .replacingOccurrences(of: "ｄ", with: "d")
             .replacingOccurrences(of: "ｅ", with: "e")
             .replacingOccurrences(of: "ｆ", with: "f")
-            .replacingOccurrences(of: #"^[•◎○〇●×✓☑☐□■▢口◉◯⑴-⒇①-⑳xX0Oo~|｜\s]*([A-Fa-f])\s*[、．:]?\s*"#, with: "$1. ", options: .regularExpression)
+            .replacingOccurrences(of: #"^[<＜>＞•◎○〇●×✓☑☐□■▢口◉◯⑴-⒇①-⑳xX0Oo~|｜\s]*([A-Fa-f])\s*[、．:]?\s*"#, with: "$1. ", options: .regularExpression)
         guard let first = normalized.first else { return normalized }
         return first.uppercased() + normalized.dropFirst()
     }
@@ -479,7 +560,7 @@ final class WrongQuestionOrganizer {
             .replacingOccurrences(of: "ｄ", with: "d")
             .replacingOccurrences(of: "ｅ", with: "e")
             .replacingOccurrences(of: "ｆ", with: "f")
-        let pattern = #"^[•◎○〇●×✓☑☐□■▢口◉◯⑴-⒇①-⑳xX0Oo~|｜\s]*([A-Fa-f])\s*[\.、．:]?\s*(\S.*)$"#
+        let pattern = #"^[<＜>＞•◎○〇●×✓☑☐□■▢口◉◯⑴-⒇①-⑳xX0Oo~|｜\s]*([A-Fa-f])\s*[\.、．:]?\s*(\S.*)$"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(
                 in: normalized,
@@ -500,22 +581,89 @@ final class WrongQuestionOrganizer {
         return (0..<6).contains(value) ? value : nil
     }
 
-    private func unlabeledOptionCandidate(from line: String) -> String? {
+    private func cleanedOptionText(
+        _ value: String,
+        expectedLabel: String,
+        recognitionMode: RecognitionMode
+    ) -> String {
+        guard recognitionMode == .fentiQuestionBank else { return value }
+        var result = QuestionTextCleanup.removingRecoveredOptionPrefix(
+            from: value,
+            expectedLabel: expectedLabel
+        )
+            .replacingOccurrences(of: "減", with: "减")
+            .replacingOccurrences(of: "黃", with: "黄")
+            .replacingOccurrences(of: "淺", with: "浅")
+        result = result.replacingOccurrences(
+            of: #"(?<=[浅深])(?:\|I|｜I|lI|1I|I\||I｜)(?=\s*度)"#,
+            with: "II",
+            options: .regularExpression
+        )
+        result = result.replacingOccurrences(
+            of: #"^O(?=ml$)"#,
+            with: "0",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        result = result.replacingOccurrences(of: #"(?<=II)\s+(?=度)"#, with: "", options: .regularExpression)
+        return normalizedFentiMedicalText(result)
+    }
+
+    private func normalizedFentiMedicalText(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "Nat-K+", with: "Na+-K+")
+            .replacingOccurrences(of: "Nat-K", with: "Na+-K")
+            .replacingOccurrences(of: "Na*", with: "Na+")
+            .replacingOccurrences(of: "K*", with: "K+")
+            .replacingOccurrences(
+                of: #"(?<=[浅深])(?:\|I|｜I|lI|1I|I\||I｜)(?=\s*度)"#,
+                with: "II",
+                options: .regularExpression
+            )
+    }
+
+    private func unlabeledOptionCandidate(from line: String, expectedLabel: String) -> String? {
         let stripped = line.replacingOccurrences(
             of: #"^[•◎○〇●×✓☑☐□■▢口◉◯⑴-⒇①-⑳xX0Oo~|｜\s]+"#,
             with: "",
             options: .regularExpression
         ).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !stripped.isEmpty,
-              stripped.range(of: #"^\d+$"#, options: .regularExpression) == nil,
-              stripped.range(of: #"^[iIl丨|｜]?(答|单|多|共)$"#, options: .regularExpression) == nil,
-              !isQuestionAreaStop(stripped),
-              !isInterfaceNoise(stripped)
+        let recovered = QuestionTextCleanup.removingRecoveredOptionPrefix(
+            from: stripped,
+            expectedLabel: expectedLabel
+        )
+        guard !recovered.isEmpty,
+              recovered.range(of: #"^\d+$"#, options: .regularExpression) == nil,
+              recovered.range(of: #"^[iIl丨|｜]?(答|单|多|共)$"#, options: .regularExpression) == nil,
+              !isQuestionAreaStop(recovered)
         else { return nil }
-        let meaningfulCount = stripped.unicodeScalars.filter {
+        let meaningfulCount = recovered.unicodeScalars.filter {
             CharacterSet.alphanumerics.contains($0) || (0x4E00...0x9FFF).contains(Int($0.value))
         }.count
-        return meaningfulCount >= 2 ? stripped : nil
+        return meaningfulCount >= 2 ? recovered : nil
+    }
+
+    private func isSuspiciousFentiStem(_ question: String, hasQuestionMarker: Bool) -> Bool {
+        if !hasQuestionMarker { return true }
+        let lowercase = question.lowercased()
+        if lowercase.contains("tiku.hkwx8.com") || lowercase.contains("/burn_exam/") ||
+            lowercase.contains("http://") || lowercase.contains("https://") {
+            return true
+        }
+        let meaningfulCount = question.unicodeScalars.filter {
+            CharacterSet.alphanumerics.contains($0) || (0x4E00...0x9FFF).contains(Int($0.value))
+        }.count
+        guard meaningfulCount < 12 else { return false }
+        let compact = question.replacingOccurrences(of: " ", with: "")
+        let questionEndings = ["（）", "()", "？", "?", "有", "是", "为", "包括", "不包括"]
+        return !questionEndings.contains(where: compact.contains)
+    }
+
+    private func isSuspiciousFentiOption(_ option: String) -> Bool {
+        if option.contains("*") || option.contains("Nat") || option.contains("mmdl") { return true }
+        return option.range(
+            of: #"^[A-F]\.\s*[\]］】]|[匕乚]\s*[A-Fa-f]"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private func isQuestionAreaStop(_ line: String) -> Bool {
@@ -858,6 +1006,7 @@ final class WrongQuestionOrganizer {
             title: "医学综合错题本",
             subtitle: "薄弱知识点",
             itemCount: knowledgeCounts.count,
+            itemUnit: "条",
             note: "知识点仅从截图中已经识别到的文字自动归纳，不补写外部内容。出现两次或以上的知识点用红色标出，表示经两次记录仍需重点巩固。当前重点：\(repeated.count) 个。"
         )
 
@@ -897,14 +1046,14 @@ final class WrongQuestionOrganizer {
         try convertHTMLToDocx(documentHTML(title: "医学综合错题本_薄弱知识点", body: body), output: output)
     }
 
-    private func coverHTML(title: String, subtitle: String, itemCount: Int, note: String) -> String {
+    private func coverHTML(title: String, subtitle: String, itemCount: Int, itemUnit: String = "题", note: String) -> String {
         """
         <section class='cover'>
           <div class='kicker'>成人高考专升本 · 医学综合</div>
           <h1>\(html(title))</h1>
           <div class='subtitle'>\(html(subtitle))</div>
           <div class='rule'></div>
-          <p>当前收录：<b>\(itemCount)</b> 题</p>
+          <p>当前收录：<b>\(itemCount)</b> \(html(itemUnit))</p>
           <p>生成时间：\(html(fullDate(Date())))</p>
           <div class='cover-note'>\(html(note))</div>
         </section>

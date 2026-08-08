@@ -250,6 +250,54 @@ final class QuestionBankCoreTests: XCTestCase {
         )
     }
 
+    func testQuestionTextCleanupRemovesRepeatedSingleLongCaseSentence() {
+        let caseText = "男，26岁。右大腿和右小腿被烫伤，局部肿胀发红，伴有水疱，创面红润，疼痛明显"
+        let duplicated = "\(caseText)。\(caseText)。该患者属于（）"
+
+        XCTAssertEqual(
+            QuestionTextCleanup.removingRepeatedIntroductoryBlock(from: duplicated),
+            "\(caseText)。该患者属于（）"
+        )
+    }
+
+    func testQuestionTextCleanupRemovesRecoveredOptionPrefixes() {
+        XCTAssertEqual(
+            QuestionTextCleanup.removingRecoveredOptionPrefix(from: "<D3级", expectedLabel: "D"),
+            "3级"
+        )
+        XCTAssertEqual(
+            QuestionTextCleanup.removingRecoveredOptionPrefix(from: "1B 前纵韧带", expectedLabel: "B"),
+            "前纵韧带"
+        )
+        XCTAssertEqual(
+            QuestionTextCleanup.removingRecoveredOptionPrefix(from: "乙B促甲状腺激素", expectedLabel: "B"),
+            "促甲状腺激素"
+        )
+        XCTAssertEqual(
+            QuestionTextCleanup.removingRecoveredOptionPrefix(from: "］ B 右侧腹股沟疝修补术", expectedLabel: "B"),
+            "右侧腹股沟疝修补术"
+        )
+        XCTAssertEqual(
+            QuestionTextCleanup.removingRecoveredOptionPrefix(from: "B超检查", expectedLabel: "B"),
+            "B超检查"
+        )
+    }
+
+    func testQuestionTextCleanupRemovesQuestionBankHeaderArtifacts() {
+        XCTAssertEqual(
+            QuestionTextCleanup.removingQuestionBankHeaderArtifacts(
+                from: "Na+118mmol/L，心电图示T波低平。男，42岁。查血Na+118mmol/L，心电图示T波低平。患者水、钠代谢紊乱的类型是（）"
+            ),
+            "男，42岁。查血Na+118mmol/L，心电图示T波低平。患者水、钠代谢紊乱的类型是（）"
+        )
+        XCTAssertEqual(
+            QuestionTextCleanup.removingQuestionBankHeaderArtifacts(
+                from: "自多些胆处，不泊1。女，46岁。进油腻食物后右上腹痛。最可能出现的体征是（）"
+            ),
+            "女，46岁。进油腻食物后右上腹痛。最可能出现的体征是（）"
+        )
+    }
+
     func testWrongModeRequiresFiveWrongQuestionsWhileNormalQuestionsRemain() throws {
         for number in 1...6 { try insertQuestion(number: number) }
 

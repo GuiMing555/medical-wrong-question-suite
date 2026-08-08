@@ -25,11 +25,33 @@ enum CaptureShortcut: String, CaseIterable {
     }
 }
 
+enum RecognitionMode: String, CaseIterable {
+    case fentiQuestionBank
+    case general
+
+    var title: String {
+        switch self {
+        case .fentiQuestionBank: return "焚题库专项优化（推荐）"
+        case .general: return "通用识别"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .fentiQuestionBank:
+            return "按焚题库页面区域识别，并清除导航、答题卡、异常选项前缀及重复题干。"
+        case .general:
+            return "保留更完整的窗口区域，只使用通用题干、选项和答案解析规则。"
+        }
+    }
+}
+
 struct AppSettings {
     private enum Key {
         static let captureFolderPath = "captureFolderPath"
         static let outputFolderPath = "outputFolderPath"
         static let captureShortcut = "captureShortcut"
+        static let recognitionMode = "recognitionMode"
         static let dailyOrganizeEnabled = "dailyOrganizeEnabled"
         static let initialized = "settingsInitializedV3"
     }
@@ -37,6 +59,7 @@ struct AppSettings {
     var captureFolderPath: String
     var outputFolderPath: String
     var captureShortcut: CaptureShortcut
+    var recognitionMode: RecognitionMode
     var dailyOrganizeEnabled: Bool
 
     static var defaults: AppSettings {
@@ -48,6 +71,7 @@ struct AppSettings {
             outputFolderPath: URL(fileURLWithPath: capture)
                 .appendingPathComponent("错题本", isDirectory: true).path,
             captureShortcut: .rightShift,
+            recognitionMode: .fentiQuestionBank,
             dailyOrganizeEnabled: true
         )
     }
@@ -60,6 +84,7 @@ struct AppSettings {
             captureFolderPath: defaults.string(forKey: Key.captureFolderPath) ?? fallback.captureFolderPath,
             outputFolderPath: defaults.string(forKey: Key.outputFolderPath) ?? fallback.outputFolderPath,
             captureShortcut: CaptureShortcut(rawValue: defaults.string(forKey: Key.captureShortcut) ?? "") ?? .rightShift,
+            recognitionMode: RecognitionMode(rawValue: defaults.string(forKey: Key.recognitionMode) ?? "") ?? .fentiQuestionBank,
             dailyOrganizeEnabled: defaults.object(forKey: Key.dailyOrganizeEnabled) as? Bool ?? true
         ).normalized()
     }
@@ -71,6 +96,7 @@ struct AppSettings {
         defaults.set(value.captureFolderPath, forKey: Key.captureFolderPath)
         defaults.set(value.outputFolderPath, forKey: Key.outputFolderPath)
         defaults.set(value.captureShortcut.rawValue, forKey: Key.captureShortcut)
+        defaults.set(value.recognitionMode.rawValue, forKey: Key.recognitionMode)
         defaults.set(value.dailyOrganizeEnabled, forKey: Key.dailyOrganizeEnabled)
         defaults.set(true, forKey: Key.initialized)
     }

@@ -21,6 +21,7 @@ macOS Apple 芯片用户可从 [Latest Release](https://github.com/GuiMing555/me
 
 - 默认单独轻点右侧 Shift 截图，也可以在设置中更换快捷键。
 - 可指定截图保存目录、文档输出目录和需要截取的窗口。
+- 默认使用“焚题库专项识别”，针对当前题库的页面范围、标题杂字和常见医学字符优化；设置中可切换为“通用识别”，供其他版式使用。
 - 使用系统自带的 Vision 框架在本机识别截图，不上传图片。
 - 每日定时整理错题，默认执行时间为 15:00。
 - 分别生成纯题、答案与解析、薄弱知识点三份可打印 DOCX 文档。
@@ -84,7 +85,7 @@ macOS Apple 芯片用户可从 [Latest Release](https://github.com/GuiMing555/me
 打包同时包含两款应用的 DMG：
 
 ```bash
-./script/package_dmg.sh 1.1.0
+./script/package_dmg.sh 1.2.0
 ```
 
 运行测试：
